@@ -1,333 +1,458 @@
-# 🔐 Authentication Module — Technical Documentation
+# 🛒 NestJS E-Commerce REST API
 
-> **Status:** ✅ Production-Ready  
-> **Last Updated:** May 2026  
-> **Tech Stack:** NestJS 10, Prisma 7, Supabase (PostgreSQL), Passport.js, JWT
+A production-ready e-commerce REST API built with **NestJS**, **Prisma**, and **PostgreSQL** (Supabase). Features JWT authentication, full product CRUD, order management with stock control, and a clean modular architecture.
+
+note: Find technical documentation here: [docs](docs/auth%20module.md)
+---
+
+## ✨ Features
+
+- 🔐 JWT Authentication (register, login, protected routes)
+- 📦 Products — full CRUD with pagination
+- 🛒 Orders — place orders, stock validation, atomic transactions
+- 👤 Users — profile management, role-based access
+- ✅ Input validation via `class-validator` DTOs
+- 🐳 Docker-ready — swap Supabase for local Postgres in one `.env` change
+- 📄 Clean modular NestJS architecture
 
 ---
 
-## 📋 Overview
+## 🏗️ Architecture Overview
 
-The Auth module provides secure user authentication and authorization for the e-commerce API. It implements industry-standard practices including password hashing, JWT token management, and role-based access control (RBAC) foundations.
+```mermaid
+graph TD
+    Client["🖥️ Client (Postman / Frontend)"]
 
-### Key Features
-- ✅ User registration with password strength validation
-- ✅ Secure login with bcrypt password comparison
-- ✅ JWT access tokens with configurable expiration
-- ✅ Global route protection with selective public endpoints
-- ✅ Type-safe database operations via Prisma
-- ✅ Input validation with `class-validator`
+    Client -->|HTTP Request| Guard["🔐 JwtAuthGuard"]
+    Guard -->|valid token| Auth["AuthModule\n/auth/register\n/auth/login"]
+    Guard -->|valid token| Products["ProductsModule\n/products"]
+    Guard -->|valid token| Orders["OrdersModule\n/orders"]
+    Guard -->|valid token| Users["UsersModule\n/users/me"]
+    Guard -->|invalid token| Err401["401 Unauthorized"]
 
----
+    Auth --> ORM["Prisma"]
+    Products --> ORM
+    Orders --> ORM
+    Users --> ORM
 
-## 🏗️ Architecture & Design Decisions
-
-### Module Structure
+    ORM --> DB[("🗄️ PostgreSQL\nSupabase / Docker")]
 ```
-src/auth/
-├── auth.module.ts          # Module configuration & dependency injection
-├── auth.controller.ts      # HTTP route handlers (REST endpoints)
-├── auth.service.ts         # Business logic (hashing, token signing)
-├── jwt.strategy.ts         # Passport strategy for token validation
-├── dto/
-│   ├── register.dto.ts     # Registration input validation schema
-│   └── login.dto.ts        # Login input validation schema
-```
-
-### Why This Structure?
-| Decision | Rationale |
-|----------|-----------|
-| **Service-Controller separation** | Controllers handle HTTP concerns; services handle business logic. Enables testing and reusability. |
-| **DTOs with `class-validator`** | Automatic request validation before logic executes. Prevents invalid data from reaching the database. |
-| **Passport.js + JwtStrategy** | Industry-standard, extensible auth strategy. Easy to add OAuth, refresh tokens, or 2FA later. |
-| **Global guard + `@Public()` decorator** | Secure-by-default: all routes protected unless explicitly marked public. Reduces accidental exposure. |
-| **Prisma for data access** | Type-safe queries, auto-generated TypeScript types, and easy migrations. |
 
 ---
 
-## 🔑 Authentication Flow
+## 🗂️ Module Structure
 
-### 1. Registration (`POST /auth/register`)
+```mermaid
+graph LR
+    subgraph AuthModule
+        AC["auth.controller.ts"]
+        AS["auth.service.ts"]
+        JWTs["jwt.strategy.ts"]
+        JWTg["jwt-auth.guard.ts"]
+        LDto["login.dto.ts"]
+    end
+
+    subgraph UsersModule
+        UC["users.controller.ts"]
+        US["users.service.ts"]
+        UE["user.entity.ts"]
+    end
+
+    subgraph ProductsModule
+        PC["products.controller.ts"]
+        PS["products.service.ts"]
+        PE["product.entity.ts"]
+        PDto["create-product.dto.ts"]
+    end
+
+    subgraph OrdersModule
+        OC["orders.controller.ts"]
+        OS["orders.service.ts"]
+        OE["order.entity.ts"]
+        OIE["order-item.entity.ts"]
+        ODto["create-order.dto.ts"]
+    end
+
+    AuthModule -->|imports| UsersModule
+    OrdersModule -->|imports| UsersModule
+    OrdersModule -->|imports| ProductsModule
+```
+
+---
+
+## 🗄️ Database Schema
+
+```mermaid
+erDiagram
+    users {
+        uuid id PK
+        string name
+        string email
+        string password
+        enum role
+        timestamp createdAt
+    }
+
+    products {
+        uuid id PK
+        string name
+        string description
+        decimal price
+        int stock
+        timestamp createdAt
+    }
+
+    orders {
+        uuid id PK
+        uuid userId FK
+        enum status
+        decimal total
+        timestamp createdAt
+    }
+
+    order_items {
+        uuid id PK
+        uuid orderId FK
+        uuid productId FK
+        int quantity
+        decimal priceAtTime
+    }
+
+    users ||--o{ orders : "places"
+    orders ||--o{ order_items : "contains"
+    products ||--o{ order_items : "referenced in"
+```
+
+---
+
+## 🔐 Auth Flow
+
 ```mermaid
 sequenceDiagram
     participant Client
     participant Controller
-    participant Service
-    participant Database
+    participant AuthService
+    participant UsersService
+    participant DB
+    participant JwtService
 
-    Client->>Controller: POST /auth/register {email, name, password}
-    Controller->>Service: authService.register(dto)
-    Service->>Database: Find user by email
-    alt User exists
-        Database-->>Service: User found
-        Service-->>Controller: BadRequestException
-        Controller-->>Client: 400 Bad Request
-    else User doesn't exist
-        Database-->>Service: null
-        Service->>Service: bcrypt.hash(password, 10)
-        Service->>Database: Create user with hashed password
-        Database-->>Service: New user (without password)
-        Service->>Service: jwtService.sign({ sub: user.id, email })
-        Service-->>Controller: { user, access_token }
-        Controller-->>Client: 201 Created
+    Client->>Controller: POST /auth/login { email, password }
+    Controller->>AuthService: validateUser(email, password)
+    AuthService->>UsersService: findByEmail(email)
+    UsersService->>DB: SELECT * FROM users WHERE email = ?
+    DB-->>UsersService: user row
+    UsersService-->>AuthService: user entity
+    AuthService->>AuthService: bcrypt.compare(password, hash)
+    alt valid
+        AuthService->>JwtService: sign({ sub: id, email })
+        JwtService-->>Controller: access_token
+        Controller-->>Client: 200 { access_token }
+    else invalid
+        AuthService-->>Controller: throw UnauthorizedException
+        Controller-->>Client: 401 Unauthorized
     end
 ```
 
-### 2. Login (`POST /auth/login`)
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Controller
-    participant Service
-    participant Database
+---
 
-    Client->>Controller: POST /auth/login {email, password}
-    Controller->>Service: authService.login(dto)
-    Service->>Database: Find user by email
-    alt User not found
-        Database-->>Service: null
-        Service-->>Controller: UnauthorizedException
-        Controller-->>Client: 401 Invalid credentials
-    else User found
-        Database-->>Service: User (with hashed password)
-        Service->>Service: bcrypt.compare(password, user.password)
-        alt Password mismatch
-            Service-->>Controller: UnauthorizedException
-            Controller-->>Client: 401 Invalid credentials
-        else Password matches
-            Service->>Service: jwtService.sign({ sub: user.id, email })
-            Service-->>Controller: { user (sanitized), access_token }
-            Controller-->>Client: 200 OK
-        end
-    end
-```
+## 🛒 Place Order Flow
 
-### 3. Protected Route Access
 ```mermaid
 sequenceDiagram
     participant Client
     participant Guard
-    participant Strategy
-    participant Service
-    participant Controller
+    participant OrdersService
+    participant ProductsService
+    participant DB
 
-    Client->>Guard: GET /users/me + Authorization: Bearer <token>
-    Guard->>Strategy: Extract & decode JWT
-    Strategy->>Service: validateUser(payload.sub)
-    Service->>Database: Find user by ID
-    Database-->>Service: User object
-    Service-->>Strategy: Validated user
-    Strategy-->>Guard: Attach user to req.user
-    Guard->>Controller: Proceed with authenticated request
-    Controller->>Service: usersService.findOne(req.user.id)
-    Service->>Database: Fetch user profile
-    Database-->>Service: User data
-    Service-->>Controller: Profile object
-    Controller-->>Client: 200 OK + user profile
+    Client->>Guard: POST /orders + Bearer token
+    Guard->>Guard: Verify JWT
+    Guard->>OrdersService: create(userId, items[])
+
+    loop for each item
+        OrdersService->>ProductsService: findOne(productId)
+        ProductsService->>DB: SELECT product
+        DB-->>ProductsService: product
+        OrdersService->>OrdersService: check stock >= quantity
+    end
+
+    alt any item out of stock
+        OrdersService-->>Client: 400 Bad Request
+    else all in stock
+        OrdersService->>DB: BEGIN TRANSACTION
+        OrdersService->>DB: INSERT INTO orders
+        OrdersService->>DB: INSERT INTO order_items
+        OrdersService->>DB: UPDATE products SET stock = stock - qty
+        OrdersService->>DB: COMMIT
+        DB-->>Client: 201 Created { order }
+    end
 ```
 
 ---
 
-## 🌐 API Endpoints
+## 📁 Project Structure
 
-### Public Endpoints (No Authentication Required)
-
-| Method | Endpoint | Description | Request Body | Success Response |
-|--------|----------|-------------|--------------|-----------------|
-| `POST` | `/auth/register` | Register a new user | `{ email, name, password }` | `201 Created` + `{ user, access_token }` |
-| `POST` | `/auth/login` | Authenticate and receive JWT | `{ email, password }` | `200 OK` + `{ user, access_token }` |
-
-### Protected Endpoints (Requires JWT)
-
-| Method | Endpoint | Description | Headers | Success Response |
-|--------|----------|-------------|---------|-----------------|
-| `GET` | `/users/me` | Get current user's profile | `Authorization: Bearer <token>` | `200 OK` + user object |
-| `PATCH` | `/users/me` | Update current user's profile | `Authorization: Bearer <token>` + `{ name?, email? }` | `200 OK` + updated user |
+```
+src/
+├── auth/
+│   ├── auth.module.ts
+│   ├── auth.controller.ts
+│   ├── auth.service.ts
+│   ├── jwt.strategy.ts
+│   ├── jwt-auth.guard.ts
+│   └── dto/
+│       ├── login.dto.ts
+│       └── register.dto.ts
+├── users/
+│   ├── users.module.ts
+│   ├── users.controller.ts
+│   ├── users.service.ts
+│   ├── entities/
+│   │   └── user.entity.ts
+│   └── dto/
+│       └── update-user.dto.ts
+├── products/
+│   ├── products.module.ts
+│   ├── products.controller.ts
+│   ├── products.service.ts
+│   ├── entities/
+│   │   └── product.entity.ts
+│   └── dto/
+│       ├── create-product.dto.ts
+│       └── update-product.dto.ts
+├── orders/
+│   ├── orders.module.ts
+│   ├── orders.controller.ts
+│   ├── orders.service.ts
+│   ├── entities/
+│   │   ├── order.entity.ts
+│   │   └── order-item.entity.ts
+│   └── dto/
+│       └── create-order.dto.ts
+└── main.ts
+```
 
 ---
 
-## 🔒 Security Implementation
+## 🚀 Getting Started
 
-### Password Security
-```typescript
-// Password hashing with bcrypt (10 salt rounds)
-const hashedPassword = await bcrypt.hash(plainPassword, 10);
+### Prerequisites
 
-// Password verification
-const isMatch = await bcrypt.compare(plainPassword, hashedPassword);
+- Node.js 18+
+- npm or yarn
+- A [Supabase](https://supabase.com) account (free tier works fine)
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/your-username/nestjs-ecommerce-api.git
+cd nestjs-ecommerce-api
+npm install
 ```
-- ✅ **Never store plain-text passwords**
-- ✅ **Use adaptive hashing (bcrypt) to resist brute-force attacks**
-- ✅ **Generic error messages** to prevent email enumeration attacks
 
-### JWT Token Management
-```typescript
-// Token signing
-const token = jwtService.sign(
-  { sub: user.id, email: user.email }, // Payload
-  { expiresIn: '7d' } // Expiration
-);
+### 2. Configure environment
 
-// Token verification (handled by Passport/JwtStrategy)
-// Automatically validates signature, expiration, and attaches user to request
+```bash
+cp .env.example .env
 ```
-- ✅ **Short-lived tokens** (7 days) reduce exposure window
-- ✅ **Standard `sub` claim** for user ID (RFC 7519 compliant)
-- ✅ **Secret stored in environment variables** (never in code)
 
-### Input Validation
-```typescript
-// RegisterDto example
-export class RegisterDto {
-  @IsEmail()
-  email: string;
+Edit `.env`:
 
-  @IsString()
-  @MinLength(8)
-  @Matches(/((?=.*\d)|(?=.*\W+))(?![.\n])(?=.*[A-Z])(?=.*[a-z]).*$/, {
-    message: 'Password too weak',
-  })
-  password: string;
+```env
+# Supabase (starter)
+DB_HOST=db.xxxxxxxxxxxx.supabase.co
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=your-supabase-password
+DB_NAME=postgres
+
+# JWT
+JWT_SECRET=your-super-secret-key
+JWT_EXPIRES_IN=7d
+```
+
+### 3. Run the app
+
+```bash
+# development
+npm run start:dev
+
+# production
+npm run build
+npm run start:prod
+```
+
+The API will be running at `http://localhost:3000`.
+
+---
+
+## 🐳 Switch to Local Docker Postgres
+
+When you're ready to run Postgres locally, it's a single `.env` change:
+
+```bash
+# Start Postgres in Docker
+docker run --name pg-ecommerce \
+  -e POSTGRES_PASSWORD=secret \
+  -e POSTGRES_DB=ecommerce \
+  -p 5432:5432 \
+  -d postgres
+```
+
+Update `.env`:
+
+```env
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=secret
+DB_NAME=ecommerce
+```
+
+No code changes needed — just restart the app.
+
+---
+
+## 📡 API Endpoints
+
+### Auth
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/auth/register` | ❌ | Register a new user |
+| POST | `/auth/login` | ❌ | Login and receive JWT |
+
+### Users
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/users/me` | ✅ | Get own profile |
+| PATCH | `/users/me` | ✅ | Update own profile |
+
+### Products
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/products` | ✅ | List all products (paginated) |
+| GET | `/products/:id` | ✅ | Get a single product |
+| POST | `/products` | ✅ Admin | Create a product |
+| PATCH | `/products/:id` | ✅ Admin | Update a product |
+| DELETE | `/products/:id` | ✅ Admin | Delete a product |
+
+> Query params for pagination: `?page=1&limit=10`
+
+### Orders
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/orders` | ✅ | Place a new order |
+| GET | `/orders` | ✅ | Get own orders |
+| GET | `/orders/:id` | ✅ | Get a single order with items |
+
+---
+
+## 🔑 Authentication
+
+All protected routes require a `Bearer` token in the `Authorization` header:
+
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+Get the token from `POST /auth/login`.
+
+---
+
+## 📦 Request & Response Examples
+
+### Register
+
+```http
+POST /auth/register
+Content-Type: application/json
+
+{
+  "name": "Jane Doe",
+  "email": "jane@example.com",
+  "password": "securepassword"
 }
 ```
-- ✅ **Whitelist validation**: Only defined fields are accepted (`whitelist: true`)
-- ✅ **Strong password requirements**: Minimum length, uppercase, lowercase, number/special char
-- ✅ **Automatic sanitization**: Extra fields are stripped before processing
 
-### Data Exposure Control
-```typescript
-// Never return sensitive fields in API responses
-const user = await prisma.user.findUnique({
-  where: { id },
-  select: {
-    id: true,
-    email: true,
-    name: true,
-    role: true,
-    createdAt: true,
-    // password is NEVER selected
-  },
-});
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
 ```
-- ✅ **Explicit field selection** prevents accidental data leaks
-- ✅ **`@Exclude()` decorator** (via `class-transformer`) as backup protection
+
+### Place an Order
+
+```http
+POST /orders
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "items": [
+    { "productId": "uuid-here", "quantity": 2 },
+    { "productId": "uuid-here", "quantity": 1 }
+  ]
+}
+```
+
+```json
+{
+  "id": "order-uuid",
+  "status": "pending",
+  "total": 149.97,
+  "items": [
+    { "productId": "...", "quantity": 2, "priceAtTime": 49.99 },
+    { "productId": "...", "quantity": 1, "priceAtTime": 49.99 }
+  ],
+  "createdAt": "2026-05-23T10:00:00.000Z"
+}
+```
 
 ---
 
-## ⚙️ Environment Variables
+## 🛠️ Tech Stack
 
-| Variable | Description | Example | Required |
-|----------|-------------|---------|----------|
-| `DATABASE_URL` | PostgreSQL connection string (Supabase pooler) | `postgresql://postgres:pass@aws-1-eu-west-2.pooler.supabase.com:5432/postgres?schema=public` | ✅ |
-| `JWT_SECRET` | Secret key for signing JWTs (min 32 chars recommended) | `your-super-secret-key-change-in-production` | ✅ |
-
-> 🔐 **Security Note**: Never commit `.env` to version control. Use `.env.example` for documentation.
+| Technology | Purpose |
+|------------|---------|
+| [NestJS](https://nestjs.com) | Framework |
+| [Prisma](https://www.prisma.io/docs) | ORM |
+| [PostgreSQL](https://postgresql.org) | Database |
+| [Supabase](https://supabase.com) | Hosted Postgres (dev) |
+| [Docker](https://docker.com) | Local Postgres (prod) |
+| [JWT](https://jwt.io) | Authentication |
+| [bcrypt](https://github.com/kelektiv/node.bcrypt.js) | Password hashing |
+| [class-validator](https://github.com/typestack/class-validator) | DTO validation |
 
 ---
 
 ## 🧪 Testing with Postman
 
-### 1. Register a New User
-```http
-POST http://localhost:3000/api/auth/register
-Content-Type: application/json
-
-{
-  "email": "test@example.com",
-  "name": "Test User",
-  "password": "SecurePass123!"
-}
-```
-
-**Expected Response (201 Created):**
-```json
-{
-  "user": {
-    "id": "uuid-here",
-    "email": "test@example.com",
-    "name": "Test User",
-    "role": "USER",
-    "createdAt": "2026-05-23T..."
-  },
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-}
-```
-
-### 2. Login to Get a Token
-```http
-POST http://localhost:3000/api/auth/login
-Content-Type: application/json
-
-{
-  "email": "test@example.com",
-  "password": "SecurePass123!"
-}
-```
-
-### 3. Access Protected Route
-```http
-GET http://localhost:3000/api/users/me
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
-
-### 4. Test Unauthorized Access (Should Fail)
-```http
-GET http://localhost:3000/api/users/me
-```
-**Expected Response:** `401 Unauthorized`
+1. Import the collection (add link here)
+2. Set `base_url` variable to `http://localhost:3000`
+3. Run `POST /auth/register` first
+4. Copy the `access_token` from the response
+5. Set it as the `token` variable in your collection
+6. All other requests will use it automatically
 
 ---
 
-## 🔄 Error Handling
+## 📌 Key Design Decisions
 
-| Scenario | HTTP Status | Response Body |
-|----------|-------------|---------------|
-| Email already registered | `400 Bad Request` | `{ "message": "Email already registered" }` |
-| Invalid credentials | `401 Unauthorized` | `{ "message": "Invalid credentials" }` |
-| Missing/invalid JWT | `401 Unauthorized` | `{ "message": "Unauthorized" }` |
-| User not found | `404 Not Found` | `{ "message": "User with ID X not found" }` |
-| Validation error | `400 Bad Request` | `{ "message": ["email must be an email", "password too weak"] }` |
+**Why `priceAtTime` on order items?**
+Product prices change. By storing the price at the moment of purchase on each order item, historical orders always reflect what the customer actually paid — not the current price.
 
-> 💡 **Pro Tip**: Generic "Invalid credentials" messages prevent attackers from enumerating valid emails.
+**Why transactions on order creation?**
+Stock deduction and order creation happen together atomically. If anything fails mid-way, the entire operation rolls back — no phantom stock deductions, no orphaned orders.
 
----
-
-## 🚀 Deployment Considerations
-
-### Production Checklist
-- [ ] **Rotate `JWT_SECRET`** to a cryptographically secure random string (use `crypto.randomBytes(32)`)
-- [ ] **Set token expiration** appropriate to your use case (shorter for high-security apps)
-- [ ] **Enable HTTPS** in production (Supabase provides this by default)
-- [ ] **Rate-limit auth endpoints** to prevent brute-force attacks (consider `@nestjs/throttler`)
-- [ ] **Log auth events** (logins, failed attempts) for security monitoring
-- [ ] **Implement refresh tokens** for better UX without compromising security (future enhancement)
-
-### Scaling Notes
-- **Stateless JWTs** scale horizontally — no session storage required
-- **Supabase connection pooling** handles concurrent connections efficiently
-- **Prisma connection management** via `onModuleInit`/`onModuleDestroy` ensures clean shutdowns
+**Why export `UsersService` from `UsersModule`?**
+NestJS's DI system is module-scoped. Without `exports: [UsersService]`, the `AuthModule` cannot inject it. This is the most common beginner mistake.
 
 ---
 
-## 🔮 Future Enhancements
+## 📄 License
 
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| Refresh tokens | High | Issue short-lived access tokens + long-lived refresh tokens for seamless re-auth |
-| Email verification | Medium | Send confirmation email on registration; require verification before login |
-| Password reset flow | Medium | "Forgot password" with time-limited reset tokens |
-| Role-based access control (RBAC) | High | Extend `JwtAuthGuard` to check `req.user.role` for admin-only endpoints |
-| Two-factor authentication (2FA) | Low | TOTP-based 2FA for high-security accounts |
-| OAuth2 social login | Low | Google, GitHub, etc. via `passport-google-oauth20`, etc. |
-
----
-
-## 📚 References & Further Reading
-
-- [NestJS Authentication](https://docs.nestjs.com/security/authentication)
-- [Passport.js Documentation](https://www.passportjs.org/)
-- [JWT RFC 7519](https://datatracker.ietf.org/doc/html/rfc7519)
-- [Prisma Authentication Guide](https://www.prisma.io/docs/guides/database/auth)
-- [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
-
----
+MIT
