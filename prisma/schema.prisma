@@ -30,6 +30,13 @@ model Order {
 
   @@map("order")
 }
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
 
 model OrderItem {
   id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

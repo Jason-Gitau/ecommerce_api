@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ProductsService } from '../products/products.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
+import { OrderStatus } from '@prisma/client';
 
 @Injectable()
 export class OrdersService {
@@ -149,4 +150,74 @@ export class OrdersService {
 
     return order;
   }
+  // GET /admin/orders - List ALL orders (admin only)
+async findAllAdmin(query: PaginationQueryDto) {
+  const { page = 1, limit = 10 } = query;
+  const skip = (page - 1) * limit;
+
+  const [data, total] = await Promise.all([
+    this.prisma.order.findMany({
+      where: {}, // 👈 No userId filter = all orders
+      include: {
+        items: {
+          include: { product: true },
+        },
+      },
+      skip,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+    }),
+    this.prisma.order.count(), // 👈 Count all orders
+  ]);
+
+  return {
+    data,
+    pagination: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
+}
+
+// GET /admin/orders/:id - View any order (admin only)
+async findOneAdmin(id: string) {
+  const order = await this.prisma.order.findUnique({
+    where: { id },
+    include: {
+      items: {
+        include: { product: true },
+      },
+    },
+  });
+  if (!order) {
+    throw new NotFoundException(`Order with ID ${id} not found`);
+  }
+  return order;
+}
+
+// PATCH /admin/orders/:id/status - Update status (admin only)
+async updateStatus(id: string, status: OrderStatus) {
+  // Verify order exists
+  const order = await this.prisma.order.findUnique({ where: { id } });
+  if (!order) {
+    throw new NotFoundException(`Order with ID ${id} not found`);
+  }
+
+  // Optional: Add business logic (e.g., can't change CANCELLED orders)
+  if (order.status === 'CANCELLED' && status !== 'CANCELLED') {
+    throw new BadRequestException('Cannot modify a cancelled order');
+  }
+
+  return this.prisma.order.update({
+    where: { id },
+    data: { status },
+    include: {
+      items: {
+        include: { product: true },
+      },
+    },
+  });
+}
 }

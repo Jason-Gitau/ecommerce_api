@@ -440,6 +440,19 @@ Content-Type: application/json
 
 ---
 
+## 🏗️ System Architecture
+
+- Global guard: `JwtAuthGuard` via `APP_GUARD` in `AppModule`
+- Public routes: Use `@Public()` decorator from `src/common/decorators`
+- Validation: Global `ValidationPipe` with `whitelist: true`
+- Pagination envelope: Always `{ data, pagination: { total, page, limit, totalPages } }`
+- Money fields: Use Prisma `Decimal @db.Decimal(10,2)` + `Decimal.js` in services
+- UUIDs: All IDs are `String @default(uuid())`, never `Int`
+- Table mapping: All models use `@@map("lowercase")` for PostgreSQL compatibility
+
+---
+
+
 ## 📌 Key Design Decisions
 
 **Why `priceAtTime` on order items?**
