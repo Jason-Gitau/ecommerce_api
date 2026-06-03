@@ -6,8 +6,10 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { UsersModule } from '../users/users.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { EmailModule } from '../email/email.module';
 @Module({
   imports: [
+    EmailModule,
     UsersModule, // Need UsersService to find users
     PrismaModule,
     PassportModule,

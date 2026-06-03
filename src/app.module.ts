@@ -12,6 +12,7 @@ import { AdminModule } from './admin/admin.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { HealthController } from './health/health.controller';
 import { PaymentsModule } from './payments/payments.module';
+import { EmailModule } from './email/email.module';
 
 
 @Module({
@@ -24,6 +25,7 @@ import { PaymentsModule } from './payments/payments.module';
     OrdersModule,
     AdminModule,
     PaymentsModule,
+    EmailModule,
   ],
   controllers: [AppController, HealthController],
   providers: [
