@@ -16,7 +16,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { QueryUsersDto } from './dto/query-users.dto';     
-import { UpdateUserDto } from './dto/update-user.dto';     
+import { AdminUpdateUserDto } from './dto/update-user.dto';     
 import { OrderExportDto } from './dto/order-export.dto';
 
 @Controller('admin')
@@ -56,7 +56,7 @@ export class AdminController {
   @Patch('users/:id')
   updateUser(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-    @Body() dto: UpdateUserDto,
+    @Body() dto: AdminUpdateUserDto,
   ) {
     return this.adminService.updateUser(id, dto);
   }

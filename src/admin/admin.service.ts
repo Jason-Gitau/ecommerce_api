@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common'; 
 import { PrismaService } from '../prisma/prisma.service';
 import { QueryUsersDto } from './dto/query-users.dto';        
-import { UpdateUserDto } from './dto/update-user.dto';
+import { AdminUpdateUserDto } from './dto/update-user.dto';
 import Decimal from 'decimal.js';     
 import { OrderExportDto } from './dto/order-export.dto';
 
@@ -205,7 +205,7 @@ export class AdminService {
     };
   }
 
-  async updateUser(id: string, dto: UpdateUserDto) {
+  async updateUser(id: string, dto: AdminUpdateUserDto) {
   const existing = await this.prisma.user.findUnique({ where: { id } });
   if (!existing) {
     throw new NotFoundException(`User with ID ${id} not found`);

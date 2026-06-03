@@ -9,17 +9,23 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard'; // Use the smart 
 import { ProductsModule } from './products/products.module';
 import { OrdersModule } from './orders/orders.module';
 import { AdminModule } from './admin/admin.module';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { HealthController } from './health/health.controller';
+import { PaymentsModule } from './payments/payments.module';
+
 
 @Module({
   imports: [
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]), 
     PrismaModule,
     UsersModule,
     AuthModule,
     ProductsModule,
     OrdersModule,
     AdminModule,
+    PaymentsModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, HealthController],
   providers: [
     AppService,
     {

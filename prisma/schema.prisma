@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  
 }
 
 model User {
@@ -17,6 +18,7 @@ model User {
   isBanned    Boolean  @default(false)
   adminNotes  String?  @db.Text
   orders    Order[]
+  refreshTokens RefreshToken[]
 
   @@map("user")
 }
@@ -24,20 +26,24 @@ model User {
 model Order {
   id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String      @db.Uuid
-  status    String      @default("PENDING")
   total     Decimal     @db.Decimal(10, 2)
   createdAt DateTime    @default(now())
   user      User        @relation(fields: [userId], references: [id])
   items     OrderItem[]
+  status OrderStatus @default(PENDING)
+  payment Payment?
 
   @@map("order")
 }
 enum OrderStatus {
   PENDING
+  PAID          
   CONFIRMED
   SHIPPED
   DELIVERED
   CANCELLED
+  REFUNDED      
+  FAILED       
 }
 
 model OrderItem {
@@ -65,4 +71,40 @@ model Product {
 enum Role {
   USER
   ADMIN
+}
+
+
+
+// Add these new models
+model Payment {
+  id               String   @id @default(uuid())
+  orderId          String   @unique @db.Uuid 
+  stripeIntentId   String   @unique
+  amount           Decimal  @db.Decimal(10, 2)
+  currency         String   @default("usd")
+  status           String   @default("pending") // pending, succeeded, failed
+  receiptUrl       String?
+  createdAt        DateTime @default(now())
+  order            Order    @relation(fields: [orderId], references: [id])
+  @@map("payment")
+}
+
+model PaymentEvent {
+  id              String   @id @default(uuid())
+  stripeEventId   String   @unique
+  createdAt       DateTime @default(now())
+  @@map("payment_event")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @db.Uuid
+  tokenHash String   // bcrypt hash of the refresh token string
+  jti       String   @unique // JWT ID for rotation tracking
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("refresh_token")
 }
