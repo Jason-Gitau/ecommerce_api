@@ -9,6 +9,7 @@ import {
   UseGuards,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -19,6 +20,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
+@ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
@@ -58,6 +60,7 @@ export class AuthController {
     return { accessToken, user };
   }
 
+  @ApiBearerAuth()
   @Post('refresh')
   async refresh(@Req() req: Request & { user?: { id: string } }, @Res({ passthrough: true }) res: Response) {
     const refreshToken = req.cookies?.refresh_token;
@@ -76,6 +79,7 @@ export class AuthController {
     return { accessToken };
   }
 
+  @ApiBearerAuth()
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   async logout(@Req() req: Request & { user?: { id: string } }, @Res({ passthrough: true }) res: Response) {

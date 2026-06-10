@@ -8,17 +8,20 @@ import {
   Param,
   Query,
   ParseUUIDPipe,
-  UseGuards, // 👈 ADD THIS - was missing
+  UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductsDto } from './dto/query-products.dto';
 import { Public } from '../common/decorators/public.decorator';
-import { Roles } from '../common/decorators/roles.decorator'; // 👈 FIXED - no duplicate
+import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { Role } from '@prisma/client'; // 👈 Also need Role enum
+import { Role } from '@prisma/client';
 
+@ApiTags('products')
+@ApiBearerAuth()
 @Controller('products')
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}

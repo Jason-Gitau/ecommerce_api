@@ -7,17 +7,13 @@ import {
   Post,
   Query,
   Req,
-  Patch,
-  UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Request } from 'express';
-import { Role } from '@prisma/client'; // 👈 Import Prisma Role enum
+import { Role } from '@prisma/client';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
-import { UpdateOrderStatusDto } from './dto/update-order-status.dto'; // 👈 Create this next
 import { OrdersService } from './orders.service';
-import { Roles } from '../common/decorators/roles.decorator'; // 👈 Import decorator
-import { RolesGuard } from '../common/guards/roles.guard'; // 👈 Import guard
 
 // Updated interface: role is now typed as Prisma Role enum
 interface AuthenticatedRequest extends Request {
@@ -28,7 +24,9 @@ interface AuthenticatedRequest extends Request {
   };
 }
 
-@Controller('')
+@ApiTags('orders')
+@ApiBearerAuth()
+@Controller('orders')
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
@@ -69,45 +67,4 @@ export class OrdersController {
   ) {
     return this.ordersService.findOne(id, req.user.id);
   }
-  // ==================== ADMIN ENDPOINTS ====================
-
-  /**
-   * GET /admin/orders?page=1&limit=10
-   * Admin-only: List ALL orders across all users (with pagination).
-   */
-  @Get('admin/orders')
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
-  findAllAdmin(@Query() paginationQuery: PaginationQueryDto) {
-    return this.ordersService.findAllAdmin(paginationQuery);
-  }
-
-  /**
-   * GET /admin/orders/:id
-   * Admin-only: View any order by ID (bypasses ownership check).
-   */
-  @Get('admin/orders/:id')
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
-  findOneAdmin(
-    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-  ) {
-    return this.ordersService.findOneAdmin(id);
-  }
-
-  /**
-   * PATCH /admin/orders/:id/status
-   * Admin-only: Update order status (e.g., PENDING → SHIPPED).
-   */
-  @Patch('admin/orders/:id/status')
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
-  updateStatus(
-    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-    @Body() dto: UpdateOrderStatusDto,
-  ) {
-    return this.ordersService.updateStatus(id, dto.status);
-  }
-
-
 }
