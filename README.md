@@ -259,12 +259,10 @@ cp .env.example .env
 Edit `.env`:
 
 ```env
-# Supabase (starter)
-DB_HOST=db.xxxxxxxxxxxx.supabase.co
-DB_PORT=5432
-DB_USERNAME=postgres
-DB_PASSWORD=your-supabase-password
-DB_NAME=postgres
+# Database
+DATABASE_URL=postgresql://postgres:your-password@db.xxxxxxxxxxxx.supabase.co:5432/postgres
+# Optional: use a direct connection for Prisma CLI tasks like migrations
+DIRECT_URL=postgresql://postgres:your-password@db.xxxxxxxxxxxx.supabase.co:5432/postgres
 
 # JWT
 JWT_SECRET=your-super-secret-key
@@ -302,11 +300,8 @@ docker run --name pg-ecommerce \
 Update `.env`:
 
 ```env
-DB_HOST=localhost
-DB_PORT=5432
-DB_USERNAME=postgres
-DB_PASSWORD=secret
-DB_NAME=ecommerce
+DATABASE_URL=postgresql://postgres:secret@localhost:5432/ecommerce
+DIRECT_URL=postgresql://postgres:secret@localhost:5432/ecommerce
 ```
 
 No code changes needed — just restart the app.
