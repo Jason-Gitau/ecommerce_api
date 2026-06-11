@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common'; 
+import { Injectable, NotFoundException, StreamableFile } from '@nestjs/common'; 
 import { PrismaService } from '../prisma/prisma.service';
 import { QueryUsersDto } from './dto/query-users.dto';        
 import { AdminUpdateUserDto } from './dto/update-user.dto';
 import Decimal from 'decimal.js';     
 import { OrderExportDto } from './dto/order-export.dto';
+import { Readable } from 'stream';
 
 @Injectable()
 export class AdminService {
@@ -243,50 +244,81 @@ export class AdminService {
     if (endDate) where.createdAt = { ...where.createdAt, lte: new Date(endDate) };
     if (status) where.status = status;
 
-    // Fetch orders with customer info
-    const orders = await this.prisma.order.findMany({
-      where,
-      include: {
-        user: { select: { email: true, name: true } },
-        items: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const batchSize = Number(process.env.CSV_EXPORT_BATCH_SIZE || 500);
 
-    // CSV Headers
-    const headers = [
-      'Order ID',
-      'Date',
-      'Customer Email',
-      'Customer Name',
-      'Status',
-      'Total',
-      'Item Count',
-    ];
-
-    // CSV Rows
-    const rows = orders.map((o) => [
-      o.id,
-      o.createdAt.toISOString().split('T')[0],
-      o.user?.email || 'Unknown',
-      o.user?.name || 'Unknown',
-      o.status,
-      o.total.toString(), // .toString() prevents floating-point drift
-      o.items.reduce((sum, item) => sum + item.quantity, 0),
-    ]);
-
-    // Escape CSV values (wrap in quotes, double any internal quotes)
     const escapeCsv = (val: unknown) => {
       const str = String(val ?? '');
       return `"${str.replace(/"/g, '""')}"`;
     };
 
-    const csvContent = [
-      headers.map(escapeCsv).join(','),
-      ...rows.map((r) => r.map(escapeCsv).join(',')),
-    ].join('\r\n'); // Use \r\n for Excel compatibility
+    async function* csvRows(prisma: PrismaService) {
+      yield [
+        'Order ID',
+        'Date',
+        'Customer Email',
+        'Customer Name',
+        'Status',
+        'Total',
+        'Item Count',
+      ]
+        .map(escapeCsv)
+        .join(',') + '\r\n';
 
-    return csvContent;
+      let skip = 0;
+
+      while (true) {
+        const orders = await prisma.order.findMany({
+          where,
+          select: {
+            id: true,
+            createdAt: true,
+            total: true,
+            status: true,
+            user: {
+              select: {
+                email: true,
+                name: true,
+              },
+            },
+            _count: {
+              select: {
+                items: true,
+              },
+            },
+          },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          skip,
+          take: batchSize,
+        });
+
+        if (orders.length === 0) {
+          break;
+        }
+
+        for (const order of orders) {
+          yield [
+            order.id,
+            order.createdAt.toISOString().split('T')[0],
+            order.user?.email || 'Unknown',
+            order.user?.name || 'Unknown',
+            order.status,
+            order.total.toString(),
+            order._count.items,
+          ]
+            .map(escapeCsv)
+            .join(',') + '\r\n';
+        }
+
+        if (orders.length < batchSize) {
+          break;
+        }
+
+        skip += batchSize;
+      }
+    }
+
+    const stream = Readable.from(csvRows(this.prisma));
+    return new StreamableFile(stream);
   }
 
 }

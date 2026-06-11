@@ -1,15 +1,35 @@
 import 'dotenv/config';
-import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
 import { json, raw, urlencoded } from 'express';
+import * as cookieParser from 'cookie-parser';
 import helmet from 'helmet';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
-import * as cookieParser from 'cookie-parser'; 
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 
+const REQUEST_BODY_LIMIT = process.env.REQUEST_BODY_LIMIT || '1mb';
+const ENABLE_SWAGGER =
+  process.env.ENABLE_SWAGGER === 'true' || process.env.NODE_ENV !== 'production';
+
+async function setupSwagger(app: Awaited<ReturnType<typeof NestFactory.create>>) {
+  if (!ENABLE_SWAGGER) {
+    return;
+  }
+
+  const { SwaggerModule, DocumentBuilder } = await import('@nestjs/swagger');
+  const config = new DocumentBuilder()
+    .setTitle('E-Commerce API')
+    .setDescription('Production-ready NestJS E-Commerce API')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/docs', app, document);
+}
+
 async function bootstrap() {
-  // bodyParser: false — we register body parsers manually so the Stripe webhook
+  // bodyParser: false - we register body parsers manually so the Stripe webhook
   // route receives a raw Buffer before the JSON parser can consume the stream.
   const app = await NestFactory.create(AppModule, {
     cors: true,
@@ -21,12 +41,15 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   app.useGlobalInterceptors(new ResponseInterceptor());
 
-  // Raw body for Stripe signature verification — must be registered BEFORE json()
-  app.use('/api/payments/webhooks/stripe', raw({ type: 'application/json' }));
+  // Raw body for Stripe signature verification - must be registered BEFORE json()
+  app.use(
+    '/api/payments/webhooks/stripe',
+    raw({ type: 'application/json', limit: REQUEST_BODY_LIMIT }),
+  );
 
   // JSON + form body for every other route
-  app.use(json());
-  app.use(urlencoded({ extended: true }));
+  app.use(json({ limit: REQUEST_BODY_LIMIT }));
+  app.use(urlencoded({ extended: false, limit: REQUEST_BODY_LIMIT }));
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -38,19 +61,14 @@ async function bootstrap() {
     }),
   );
 
-  const config = new DocumentBuilder()
-    .setTitle('E-Commerce API')
-    .setDescription('Production-ready NestJS E-Commerce API')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  await setupSwagger(app);
 
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');
   console.log(`Server running on http://localhost:${port}`);
-  console.log(`Docs: http://localhost:${port}/api/docs`);
+  if (ENABLE_SWAGGER) {
+    console.log(`Docs: http://localhost:${port}/api/docs`);
+  }
 }
 
 bootstrap();
