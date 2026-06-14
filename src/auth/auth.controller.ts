@@ -3,6 +3,7 @@ import {
   Controller,
   HttpCode,
   HttpStatus,
+  Logger,
   Post,
   Req,
   Res,
@@ -23,69 +24,119 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(private authService: AuthService) {}
 
   @Public()
   @Post('verify-email')
-  verifyEmail(@Body() dto: VerifyEmailDto) {
-    return this.authService.verifyEmail(dto.token);
+  async verifyEmail(@Body() dto: VerifyEmailDto) {
+    this.logger.log('POST /auth/verify-email');
+    try {
+      const result = await this.authService.verifyEmail(dto.token);
+      this.logger.log('verify-email succeeded');
+      return result;
+    } catch (err) {
+      this.logger.error(`verify-email failed: ${err.message}`);
+      throw err;
+    }
   }
 
   @Public()
   @Post('request-password-reset')
-  requestPasswordReset(@Body() dto: RequestResetDto) {
-    return this.authService.requestPasswordReset(dto.email);
+  async requestPasswordReset(@Body() dto: RequestResetDto) {
+    this.logger.log(`POST /auth/request-password-reset — email: ${dto.email}`);
+    try {
+      const result = await this.authService.requestPasswordReset(dto.email);
+      this.logger.log(`request-password-reset completed for ${dto.email}`);
+      return result;
+    } catch (err) {
+      this.logger.error(`request-password-reset failed for ${dto.email}: ${err.message}`);
+      throw err;
+    }
   }
 
   @Public()
   @Post('reset-password')
-  resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(dto.token, dto.newPassword);
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    this.logger.log('POST /auth/reset-password');
+    try {
+      const result = await this.authService.resetPassword(dto.token, dto.newPassword);
+      this.logger.log('reset-password succeeded');
+      return result;
+    } catch (err) {
+      this.logger.error(`reset-password failed: ${err.message}`);
+      throw err;
+    }
   }
 
   @Public()
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  async register(@Body() dto: RegisterDto) {
+    this.logger.log(`POST /auth/register — email: ${dto.email}`);
+    try {
+      const result = await this.authService.register(dto);
+      this.logger.log(`register succeeded for ${dto.email}`);
+      return result;
+    } catch (err) {
+      this.logger.error(`register failed for ${dto.email}: ${err.message}`);
+      throw err;
+    }
   }
 
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
-    const { user, accessToken, refreshToken } = await this.authService.login(dto);
-
-    this.setCookie(res, refreshToken);
-    return { accessToken, user };
+    this.logger.log(`POST /auth/login — email: ${dto.email}`);
+    try {
+      const { user, accessToken, refreshToken } = await this.authService.login(dto);
+      this.setCookie(res, refreshToken);
+      this.logger.log(`login succeeded for ${dto.email}`);
+      return { accessToken, user };
+    } catch (err) {
+      this.logger.error(`login failed for ${dto.email}: ${err.message}`);
+      throw err;
+    }
   }
 
   @ApiBearerAuth()
   @Post('refresh')
   async refresh(@Req() req: Request & { user?: { id: string } }, @Res({ passthrough: true }) res: Response) {
+    this.logger.log('POST /auth/refresh');
     const refreshToken = req.cookies?.refresh_token;
     if (!refreshToken) {
+      this.logger.warn('refresh failed: no refresh_token cookie present');
       throw new UnauthorizedException('Refresh token missing');
     }
 
     const userId = req.user?.id;
     if (!userId) {
+      this.logger.warn('refresh failed: no user on request (JWT guard may not be running)');
       throw new UnauthorizedException('Unauthorized');
     }
 
-    const { accessToken, refreshToken: newRefreshToken } = await this.authService.refreshTokens(userId, refreshToken);
-
-    this.setCookie(res, newRefreshToken);
-    return { accessToken };
+    try {
+      const { accessToken, refreshToken: newRefreshToken } = await this.authService.refreshTokens(userId, refreshToken);
+      this.setCookie(res, newRefreshToken);
+      this.logger.log(`refresh succeeded for userId: ${userId}`);
+      return { accessToken };
+    } catch (err) {
+      this.logger.error(`refresh failed for userId ${userId}: ${err.message}`);
+      throw err;
+    }
   }
 
   @ApiBearerAuth()
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   async logout(@Req() req: Request & { user?: { id: string } }, @Res({ passthrough: true }) res: Response) {
+    this.logger.log('POST /auth/logout');
     const refreshToken = req.cookies?.refresh_token;
     const userId = req.user?.id;
     if (!userId) {
+      this.logger.warn('logout failed: no user on request');
       throw new UnauthorizedException('Unauthorized');
     }
 
@@ -98,6 +149,7 @@ export class AuthController {
       sameSite: 'lax',
       path: '/api/auth',
     });
+    this.logger.log(`logout succeeded for userId: ${userId}`);
     return { message: 'Logged out successfully' };
   }
 
