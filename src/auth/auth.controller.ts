@@ -101,9 +101,9 @@ export class AuthController {
     }
   }
 
-  @ApiBearerAuth()
+  @Public()
   @Post('refresh')
-  async refresh(@Req() req: Request & { user?: { id: string } }, @Res({ passthrough: true }) res: Response) {
+  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     this.logger.log('POST /auth/refresh');
     const refreshToken = req.cookies?.refresh_token;
     if (!refreshToken) {
@@ -111,19 +111,13 @@ export class AuthController {
       throw new UnauthorizedException('Refresh token missing');
     }
 
-    const userId = req.user?.id;
-    if (!userId) {
-      this.logger.warn('refresh failed: no user on request (JWT guard may not be running)');
-      throw new UnauthorizedException('Unauthorized');
-    }
-
     try {
-      const { accessToken, refreshToken: newRefreshToken } = await this.authService.refreshTokens(userId, refreshToken);
+      const { accessToken, refreshToken: newRefreshToken } = await this.authService.refreshTokens(refreshToken);
       this.setCookie(res, newRefreshToken);
-      this.logger.log(`refresh succeeded for userId: ${userId}`);
+      this.logger.log('refresh succeeded');
       return { accessToken };
     } catch (err) {
-      this.logger.error(`refresh failed for userId ${userId}: ${err.message}`);
+      this.logger.error(`refresh failed: ${err.message}`);
       throw err;
     }
   }

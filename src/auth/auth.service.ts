@@ -148,7 +148,7 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  async refreshTokens(userId: string, refreshToken: string) {
+  async refreshTokens(refreshToken: string) {
     let payload: any;
     try {
       payload = await this.jwtService.verifyAsync(refreshToken, {
@@ -158,17 +158,18 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    if (payload.sub !== userId) {
-      throw new UnauthorizedException('User mismatch');
-    }
+    const userId: string = payload.sub;
+    this.logger.log(`refreshTokens — userId: ${userId}, jti: ${payload.jti}`);
 
     const stored = await this.prisma.refreshToken.findUnique({ where: { jti: payload.jti } });
     if (!stored || stored.revoked || new Date() > stored.expiresAt) {
+      this.logger.warn(`refreshTokens — token expired or revoked for userId: ${userId}`);
       throw new UnauthorizedException('Refresh token expired or revoked');
     }
 
     const isValid = await bcrypt.compare(refreshToken, stored.tokenHash);
     if (!isValid) {
+      this.logger.warn(`refreshTokens — token reuse detected for userId: ${userId}, revoking all tokens`);
       await this.prisma.refreshToken.updateMany({ where: { userId }, data: { revoked: true } });
       throw new UnauthorizedException('Security violation: token reuse detected');
     }
