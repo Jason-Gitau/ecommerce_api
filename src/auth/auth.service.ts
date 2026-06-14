@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -16,6 +17,8 @@ import { RegisterDto } from './dto/register.dto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
@@ -55,7 +58,9 @@ export class AuthService {
       },
     });
 
-    await this.emailService.sendVerificationEmail(user.email, token).catch(() => {});
+    await this.emailService.sendVerificationEmail(user.email, token).catch((err) => {
+      this.logger.error(`Failed to send verification email to ${user.email}: ${err?.message ?? err}`);
+    });
 
     return {
       user,
@@ -220,8 +225,15 @@ export class AuthService {
   }
 
   async requestPasswordReset(email: string) {
+    this.logger.log(`Password reset requested for: ${email}`);
+
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user || !user.isEmailVerified) {
+    if (!user) {
+      this.logger.warn(`Password reset: no account found for ${email}`);
+      return { success: true };
+    }
+    if (!user.isEmailVerified) {
+      this.logger.warn(`Password reset: account ${email} is not email-verified`);
       return { success: true };
     }
 
@@ -233,7 +245,12 @@ export class AuthService {
       data: { passwordResetToken: token, passwordResetExpiry: expiry },
     });
 
-    await this.emailService.sendPasswordResetEmail(user.email, token).catch(() => {});
+    this.logger.log(`Sending password reset email to ${email}`);
+    await this.emailService.sendPasswordResetEmail(user.email, token).catch((err) => {
+      this.logger.error(`Failed to send password reset email to ${email}: ${err?.message ?? err}`);
+    });
+
+    this.logger.log(`Password reset flow completed for ${email}`);
     return { success: true };
   }
 
