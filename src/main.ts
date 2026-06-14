@@ -31,9 +31,25 @@ async function setupSwagger(app: Awaited<ReturnType<typeof NestFactory.create>>)
 async function bootstrap() {
   // bodyParser: false - we register body parsers manually so the Stripe webhook
   // route receives a raw Buffer before the JSON parser can consume the stream.
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173')
+    .split(',')
+    .map((o) => o.trim());
+
   const app = await NestFactory.create(AppModule, {
-    cors: true,
     bodyParser: false,
+  });
+
+  app.enableCors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, origin ?? true);
+      } else {
+        callback(new Error(`CORS: origin ${origin} not allowed`));
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   app.use(helmet());
