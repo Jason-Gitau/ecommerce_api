@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Logger,
   Param,
   ParseUUIDPipe,
   Post,
@@ -15,56 +16,63 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { OrdersService } from './orders.service';
 
-// Updated interface: role is now typed as Prisma Role enum
 interface AuthenticatedRequest extends Request {
-  user: {
-    id: string;
-    email: string;
-    role: Role; // 👈 Changed from string to Role enum
-  };
+  user: { id: string; email: string; role: Role };
 }
 
 @ApiTags('orders')
 @ApiBearerAuth()
 @Controller('orders')
 export class OrdersController {
+  private readonly logger = new Logger(OrdersController.name);
+
   constructor(private readonly ordersService: OrdersService) {}
 
-  /**
-   * POST /orders
-   * Creates a new order for the authenticated user.
-   * Returns 400 if any item is out of stock.
-   */
   @Post()
-  create(
+  async create(
     @Req() req: AuthenticatedRequest,
     @Body() createOrderDto: CreateOrderDto,
   ) {
-    return this.ordersService.create(req.user.id, createOrderDto);
+    this.logger.log(`POST /orders — userId: ${req.user.id}, items: ${createOrderDto.items?.length ?? 0}`);
+    try {
+      const result = await this.ordersService.create(req.user.id, createOrderDto);
+      this.logger.log(`Order created — userId: ${req.user.id}`);
+      return result;
+    } catch (err) {
+      this.logger.error(`Create order failed — userId: ${req.user.id}: ${err.message}`);
+      throw err;
+    }
   }
 
-  /**
-   * GET /orders?page=1&limit=10
-   * Returns paginated orders belonging to the authenticated user only.
-   */
   @Get()
-  findAll(
+  async findAll(
     @Req() req: AuthenticatedRequest,
     @Query() paginationQuery: PaginationQueryDto,
   ) {
-    return this.ordersService.findAll(req.user.id, paginationQuery);
+    this.logger.log(`GET /orders — userId: ${req.user.id}, page: ${paginationQuery.page}, limit: ${paginationQuery.limit}`);
+    try {
+      const result = await this.ordersService.findAll(req.user.id, paginationQuery);
+      this.logger.log(`Fetched orders — userId: ${req.user.id}`);
+      return result;
+    } catch (err) {
+      this.logger.error(`Fetch orders failed — userId: ${req.user.id}: ${err.message}`);
+      throw err;
+    }
   }
 
-  /**
-   * GET /orders/:id
-   * Returns a single order with nested items and products.
-   * Returns 404 if the order does not exist or does not belong to req.user.
-   */
   @Get(':id')
-  findOne(
+  async findOne(
     @Req() req: AuthenticatedRequest,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ) {
-    return this.ordersService.findOne(id, req.user.id);
+    this.logger.log(`GET /orders/${id} — userId: ${req.user.id}`);
+    try {
+      const result = await this.ordersService.findOne(id, req.user.id);
+      this.logger.log(`Fetched order ${id} — userId: ${req.user.id}`);
+      return result;
+    } catch (err) {
+      this.logger.error(`Fetch order ${id} failed — userId: ${req.user.id}: ${err.message}`);
+      throw err;
+    }
   }
 }

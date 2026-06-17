@@ -2,7 +2,7 @@
 
 A production-ready e-commerce REST API built with **NestJS**, **Prisma**, and **PostgreSQL** (Supabase). Features JWT authentication, full product CRUD, order management with stock control, and a clean modular architecture.
 
-note: Find technical documentation here: [docs](docs/auth%20module.md)
+note: Find technical documentation here: [API reference](docs/API_REFERENCE.md)
 ---
 
 ## ✨ Features

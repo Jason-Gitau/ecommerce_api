@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Logger,
   Patch,
   Body,
   Req,
@@ -18,19 +19,36 @@ export interface RequestWithUser extends Request {
 @ApiBearerAuth()
 @Controller('users')
 export class UsersController {
+  private readonly logger = new Logger(UsersController.name);
+
   constructor(private usersService: UsersService) {}
 
   @Get('me')
-  getProfile(@Req() req: RequestWithUser) {
-    // req.user.id is now a string, which matches the Service signature
-    return this.usersService.findOne(req.user.id);
+  async getProfile(@Req() req: RequestWithUser) {
+    this.logger.log(`GET /users/me — userId: ${req.user.id}`);
+    try {
+      const result = await this.usersService.findOne(req.user.id);
+      this.logger.log(`Fetched profile — userId: ${req.user.id}`);
+      return result;
+    } catch (err) {
+      this.logger.error(`Fetch profile failed — userId: ${req.user.id}: ${err.message}`);
+      throw err;
+    }
   }
-  
+
   @Patch('me')
-  updateProfile(
+  async updateProfile(
     @Req() req: RequestWithUser,
     @Body() dto: UpdateUserDto,
   ) {
-    return this.usersService.update(req.user.id, dto);
+    this.logger.log(`PATCH /users/me — userId: ${req.user.id}`);
+    try {
+      const result = await this.usersService.update(req.user.id, dto);
+      this.logger.log(`Profile updated — userId: ${req.user.id}`);
+      return result;
+    } catch (err) {
+      this.logger.error(`Update profile failed — userId: ${req.user.id}: ${err.message}`);
+      throw err;
+    }
   }
 }
